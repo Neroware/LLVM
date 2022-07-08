@@ -1,4 +1,5 @@
-// RUN: mlir-vulkan-runner %s --shared-libs=%vulkan_wrapper_library_dir/libvulkan-runtime-wrappers%shlibext,%linalg_test_lib_dir/libmlir_runner_utils%shlibext --entry-point-result=i64 | FileCheck %s
+// RUN: mlir-opt %s -pass-pipeline="convert-scf-to-cf" \
+// RUN: | mlir-vulkan-runner %s --shared-libs=%vulkan_wrapper_library_dir/libvulkan-runtime-wrappers%shlibext,%linalg_test_lib_dir/libmlir_runner_utils%shlibext --entry-point-result=i64 | FileCheck %s
 
 module attributes {
     gpu.container_module,
@@ -14,8 +15,10 @@ gpu.module @kernels {
 }
 
 func.func @main() -> i64 {
+    %csti_0 = arith.constant 0 : index
     %csti_1 = arith.constant 1 : index
     %cst_0 = arith.constant 0 : i64
+
     gpu.launch_func @kernels::@kernel_1
         blocks in (%csti_1, %csti_1, %csti_1) threads in (%csti_1, %csti_1, %csti_1)
         args()
