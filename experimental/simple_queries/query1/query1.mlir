@@ -11,9 +11,11 @@ func.func @main() -> i64 {
     %cst_4 = arith.constant 4 : i64
     %cst_5 = arith.constant 5 : i64
     %cst_10 = arith.constant 10 : i64
-    %csti_0 = arith.constant 0 : index
-    %csti_1 = arith.constant 1 : index
-    %csti_1023 = arith.constant 1023 : index
+    %cst_1023 = arith.constant 1023 : i64
+    
+    %csti_0 = arith.index_cast %cst_0 : i64 to index
+    %csti_1 = arith.index_cast %cst_1 : i64 to index
+    %csti_1023 = arith.index_cast %cst_1023 : i64 to index
 
     // Allocate relation R (a -> bc) in column store
     %a = memref.alloc() : memref<1024xi64>
