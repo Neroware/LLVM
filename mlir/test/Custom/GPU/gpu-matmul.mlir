@@ -1,14 +1,17 @@
 // RUN: mlir-opt %s \
 // RUN:   -gpu-kernel-outlining \
-// RUN:   -pass-pipeline='func.func(convert-scf-to-cf),gpu.module(convert-scf-to-cf,strip-debuginfo,convert-gpu-to-nvvm,gpu-to-cubin)' \
-// RUN:   -gpu-to-llvm \
+// RUN:   -pass-pipeline='func.func(convert-scf-to-cf),gpu.module(strip-debuginfo,convert-scf-to-cf,convert-gpu-to-nvvm,gpu-to-cubin)' \
+// RUN:   -gpu-async-region -gpu-to-llvm \
+// RUN:   -async-to-async-runtime -async-runtime-ref-counting \
+// RUN:   -convert-async-to-llvm -convert-func-to-llvm \
 // RUN: | mlir-cpu-runner \
 // RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_cuda_runtime%shlibext \
+// RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_async_runtime%shlibext \
 // RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext \
-// RUN:   --entry-point-result=i32 \
+// RUN:   --entry-point-result=i32 -O0 \
 // RUN: | FileCheck %s
 
-// Solves C = AB with a_{ij} = b_{ij} = 1
+// Solves C = AB with a_ij = b_ij = 1
 
 module attributes {
     gpu.container_module
@@ -17,15 +20,13 @@ module attributes {
 } {
 
 gpu.module @kernels {
-    gpu.func @kernel_matmul(%mat_A : memref<1024x1024xi32>, %mat_B : memref<1024x1024xi32>, %mat_C : memref<1024x1024xi32>)
+    gpu.func @kernel_matmul(%dim : index, %in : memref<2x?x?xi32>, %out : memref<?x?xi32>)
         kernel attributes { spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi32>>} {
         // Constants
-        %cst_0 = arith.constant 0 : i32
-
+        %c0     = arith.constant 0 : i32
         // Indices
-        %csti_0 = arith.constant 0 : index
-        %csti_1 = arith.constant 1 : index
-        %csti_1024 = arith.constant 1024 : index
+        %ci0    = arith.constant 0 : index
+        %ci1    = arith.constant 1 : index
 
         %tIdX = gpu.thread_id x
         %tIdY = gpu.thread_id y
@@ -41,16 +42,16 @@ gpu.module @kernels {
         %kIdY = arith.addi %kIdYtmp, %tIdY : index
 
         // Init value in C to zero
-        memref.store %cst_0, %mat_C[%kIdX, %kIdY] : memref<1024x1024xi32>
+        memref.store %c0, %out[%kIdX, %kIdY] : memref<?x?xi32>
 
         // Perform c_ij = sum_k(a_ik * b_kj)
-        scf.for %idx0 = %csti_0 to %csti_1024 step %csti_1 {
-            %tmp_a = memref.load %mat_A[%kIdX, %idx0] : memref<1024x1024xi32>
-            %tmp_b = memref.load %mat_B[%idx0, %kIdY] : memref<1024x1024xi32>
-            %tmp_c = memref.load %mat_C[%kIdX, %kIdY] : memref<1024x1024xi32>
+        scf.for %idx0 = %ci0 to %dim step %ci1 {
+            %tmp_a = memref.load %in[%ci0, %kIdX, %idx0] : memref<2x?x?xi32>
+            %tmp_b = memref.load %in[%ci1, %idx0, %kIdY] : memref<2x?x?xi32>
+            %tmp_c = memref.load %out[%kIdX, %kIdY] : memref<?x?xi32>
             %tmp_ab = arith.muli %tmp_a, %tmp_b : i32
             %c = arith.addi %tmp_c, %tmp_ab : i32
-            memref.store %c, %mat_C[%kIdX, %kIdY] : memref<1024x1024xi32>
+            memref.store %c, %out[%kIdX, %kIdY] : memref<?x?xi32>
         }
 
         gpu.return
@@ -59,48 +60,70 @@ gpu.module @kernels {
 
 func.func @main() -> i32 {
     // Constants
-    %cst_0 = arith.constant 0 : i32
-    %cst_1 = arith.constant 1 : i32
-    // Indices
-    %csti_0 = arith.constant 0 : index
-    %csti_1 = arith.constant 1 : index
-    %csti_16 = arith.constant 16 : index
-    %csti_32 = arith.constant 32 : index
-    %csti_1023 = arith.constant 1023 : index
-    %csti_1024 = arith.constant 1024 : index
+    %ci0    = arith.constant 0 : index
+    %ci1    = arith.constant 1 : index
+    %c1     = arith.constant 1 : i32
 
-    // Init matrices
-    %mat_A = memref.alloc() : memref<1024x1024xi32>
-    %mat_B = memref.alloc() : memref<1024x1024xi32>
-    scf.for %idx0 = %csti_0 to %csti_1024 step %csti_1 {
-        scf.for %idx1 = %csti_0 to %csti_1024 step %csti_1 {
-            memref.store %cst_1, %mat_A[%idx0, %idx1] : memref<1024x1024xi32>
-            memref.store %cst_1, %mat_B[%idx0, %idx1] : memref<1024x1024xi32>
+    // Matrix Dimension
+    %dim    = arith.constant 1024 : index
+    // Grid Size
+    %grd    = arith.constant 32 : index
+    // Block Size
+    %blk    = arith.constant 32 : index
+
+    // initialize h_m0 on host
+    %h_m0 = memref.alloc(%dim, %dim) : memref<2x?x?xi32>
+    %h_c0 = memref.alloc(%dim, %dim) : memref<?x?xi32>
+    scf.for %idx0 = %ci0 to %dim step %ci1 {
+        scf.for %idx1 = %ci0 to %dim step %ci1 {
+            memref.store %c1, %h_m0[%ci0, %idx0, %idx1] : memref<2x?x?xi32>
+            memref.store %c1, %h_m0[%ci1, %idx0, %idx1] : memref<2x?x?xi32>
         }
     }
-    // Alloctate Memory for C
-    %mat_C = memref.alloc() : memref<1024x1024xi32>
+    %h_m0_unranked = memref.cast %h_m0 : memref<2x?x?xi32> to memref<*xi32>
+    %h_c0_unranked = memref.cast %h_c0 : memref<?x?xi32> to memref<*xi32>
+    gpu.host_register %h_m0_unranked : memref<*xi32>
+    gpu.host_register %h_c0_unranked : memref<*xi32>
 
-    // Cast to flat array
-    %cast_A = memref.cast %mat_A : memref<1024x1024xi32> to memref<*xi32>
-    %cast_B = memref.cast %mat_B : memref<1024x1024xi32> to memref<*xi32>
-    %cast_C = memref.cast %mat_C : memref<1024x1024xi32> to memref<*xi32>
+    // copy h_m0 to d_m0 on device.
+    %t0, %d_m0 = async.execute () -> !async.value<memref<2x?x?xi32>> {
+        %tmp_m0 = gpu.alloc(%dim, %dim) : memref<2x?x?xi32>
+        gpu.memcpy %tmp_m0, %h_m0 : memref<2x?x?xi32>, memref<2x?x?xi32>
+        async.yield %tmp_m0 : memref<2x?x?xi32>
+    }
+    // Allocate d_c0 on device
+    //%t1, %d_c0 = gpu.alloc async (%dim, %dim) : memref<?x?xi32>
+    %t1, %d_c0 = async.execute () -> !async.value<memref<?x?xi32>> {
+        %tmp_c0 = gpu.alloc(%dim, %dim) : memref<?x?xi32>
+        async.yield %tmp_c0 : memref<?x?xi32>
+    }
 
-    // Register host memory
-    gpu.host_register %cast_A : memref<*xi32>
-    gpu.host_register %cast_B : memref<*xi32>
-    gpu.host_register %cast_C : memref<*xi32>
+    // Launch kernel function
+    %t2 = async.execute [%t0, %t1] (
+        %d_m0 as %in : !async.value<memref<2x?x?xi32>>,
+        %d_c0 as %out : !async.value<memref<?x?xi32>>
+    ) {
+        gpu.launch_func @kernels::@kernel_matmul
+            blocks in (%grd, %blk, %ci1)
+            threads in (%grd, %blk, %ci1)
+            args(%dim : index, %in : memref<2x?x?xi32>, %out : memref<?x?xi32>)
+        async.yield
+    }
 
-    // Launch Kernel Function
-    gpu.launch_func @kernels::@kernel_matmul
-        blocks in (%csti_32, %csti_32, %csti_1)
-        threads in (%csti_32, %csti_32, %csti_1)
-        args(%mat_A : memref<1024x1024xi32>, %mat_B : memref<1024x1024xi32>, %mat_C : memref<1024x1024xi32>)
+    // Copy back result to h_c0
+    %t3 = async.execute [%t2] (
+        %d_c0 as %out : !async.value<memref<?x?xi32>>
+    ) {
+        gpu.memcpy %h_c0, %out : memref<?x?xi32>, memref<?x?xi32>
+        async.yield
+    }
 
-    %ret = memref.load %mat_C[%csti_1023, %csti_1023] : memref<1024x1024xi32>
+    async.await %t3 : !async.token
+
+    %ret = memref.load %h_c0[%ci1, %ci1] : memref<?x?xi32>
     return %ret : i32
 }
 
-} // End module
+}
 
 // CHECK: 1024
