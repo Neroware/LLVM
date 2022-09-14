@@ -78,11 +78,11 @@ func.func @main() -> i32 {
     %c2     = arith.constant 2 : i32
     %c4     = arith.constant 4 : i32
     // Relation Size
-    %size   = arith.constant 1024 : index
+    %size   = arith.constant 50000 : index
     // Block Size
-    %blk    = arith.constant 32 : index
+    %blk    = arith.constant 100 : index
     // Tuples per thread
-    %tup    = arith.constant 32 : index
+    %tup    = arith.constant 100 : index
 
     // Compute grid size from block size and tuples per thread
     %blk_tup = arith.muli %blk, %tup : index
@@ -203,4 +203,4 @@ func.func @main() -> i32 {
 
 } // END gpu.container_module
 
-// CHECK: 523775
+// CHECK: 1249974999
