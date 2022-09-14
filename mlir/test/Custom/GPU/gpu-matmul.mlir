@@ -13,11 +13,7 @@
 
 // Solves C = AB with a_ij = b_ij = 1
 
-module attributes {
-    gpu.container_module
-    //spv.target_env = #spv.target_env<
-    //    #spv.vce<v1.0, [Shader], [SPV_KHR_storage_buffer_storage_class, SPV_KHR_8bit_storage]>, #spv.resource_limits<>>
-} {
+module attributes {gpu.container_module} {
 
 gpu.module @kernels {
     gpu.func @kernel_matmul(%dim : index, %in : memref<2x?x?xi32>, %out : memref<?x?xi32>)
@@ -104,8 +100,8 @@ func.func @main() -> i32 {
         %d_c0 as %out : !async.value<memref<?x?xi32>>
     ) {
         gpu.launch_func @kernels::@kernel_matmul
-            blocks in (%grd, %blk, %ci1)
-            threads in (%grd, %blk, %ci1)
+            blocks in (%grd, %grd, %ci1)
+            threads in (%blk, %blk, %ci1)
             args(%dim : index, %in : memref<2x?x?xi32>, %out : memref<?x?xi32>)
         async.yield
     }
@@ -120,10 +116,11 @@ func.func @main() -> i32 {
 
     async.await %t3 : !async.token
 
-    %ret = memref.load %h_c0[%ci1, %ci1] : memref<?x?xi32>
+    %sample = arith.constant 255 : index
+    %ret = memref.load %h_c0[%ci1, %sample] : memref<?x?xi32>
     return %ret : i32
 }
 
-}
+} // END gpu.container_module
 
 // CHECK: 1024
