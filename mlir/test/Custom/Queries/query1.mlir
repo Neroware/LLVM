@@ -19,17 +19,17 @@ func.func @main() -> i64 {
     
     %csti_0 = arith.constant 0 : index
     %csti_1 = arith.constant 1 : index
-    %csti_1024 = arith.constant 1024 : index
+    %size = arith.constant 1024 : index
 
     // Allocate relation R (a -> bc) in column store
-    %a = memref.alloc() : memref<1024xi64>
-    %b = memref.alloc() : memref<1024xi64>
-    %c = memref.alloc() : memref<1024xi64>
+    %a = memref.alloc(%size) : memref<?xi64>
+    %b = memref.alloc(%size) : memref<?xi64>
+    %c = memref.alloc(%size) : memref<?xi64>
 
     // Init relation R
     %counter = memref.alloc() : memref<i64>
     memref.store %cst_0, %counter[] : memref<i64>
-    scf.for %idx0 = %csti_0 to %csti_1024 step %csti_1 {
+    scf.for %idx0 = %csti_0 to %size step %csti_1 {
         %iu_a = memref.load %counter[] : memref<i64>
         %b_tmp = memref.load %counter[] : memref<i64>
         %iu_b = arith.muli %b_tmp, %cst_2 : i64
@@ -38,9 +38,9 @@ func.func @main() -> i64 {
 
         %counter_new = arith.addi %iu_a, %cst_1 : i64
         memref.store %counter_new, %counter[] : memref<i64>
-        memref.store %iu_a, %a[%idx0] : memref<1024xi64>
-        memref.store %iu_b, %b[%idx0] : memref<1024xi64>
-        memref.store %iu_c, %c[%idx0] : memref<1024xi64>
+        memref.store %iu_a, %a[%idx0] : memref<?xi64>
+        memref.store %iu_b, %b[%idx0] : memref<?xi64>
+        memref.store %iu_c, %c[%idx0] : memref<?xi64>
     }
 
     // Allocate memory for result and initialize it to 0
@@ -48,11 +48,11 @@ func.func @main() -> i64 {
     memref.store %cst_0, %out[] : memref<i64>
 
     // Loop for sum
-    scf.for %idx0 = %csti_0 to %csti_1024 step %csti_1 {
+    scf.for %idx0 = %csti_0 to %size step %csti_1 {
         // Load information units
-        %iu_a = memref.load %a[%idx0] : memref<1024xi64>
-        %iu_b = memref.load %b[%idx0] : memref<1024xi64>
-        %iu_c = memref.load %c[%idx0] : memref<1024xi64>
+        %iu_a = memref.load %a[%idx0] : memref<?xi64>
+        %iu_b = memref.load %b[%idx0] : memref<?xi64>
+        %iu_c = memref.load %c[%idx0] : memref<?xi64>
 
         // Selection b + c > 10
         %tmp1 = arith.addi %iu_b, %iu_c : i64

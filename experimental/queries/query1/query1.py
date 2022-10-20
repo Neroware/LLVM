@@ -2,6 +2,8 @@
 # from R 
 # where b + c > 10
 
+import sys
+
 RELATION_SIZE = 50000
 
 def main():
@@ -23,4 +25,6 @@ def main():
     return ret
     
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        RELATION_SIZE = int(sys.argv[1])
     print(main())

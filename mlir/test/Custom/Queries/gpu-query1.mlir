@@ -8,7 +8,7 @@
 // RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_cuda_runtime%shlibext \
 // RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_async_runtime%shlibext \
 // RUN:   --shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext \
-// RUN:   --entry-point-result=i32 -O0 \
+// RUN:   --entry-point-result=i64 -O0 \
 // RUN: | FileCheck %s
 
 // select sum(a) 
@@ -21,18 +21,18 @@ gpu.module @kernels {
     gpu.func @select_sum(
         %r_size : index, 
         %tup_per_thr : index,
-        %in_a : memref<?xi32>,
-        %in_b : memref<?xi32>,
-        %in_c : memref<?xi32>,
-        %out : memref<?xi32>
-    ) kernel attributes {spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi32>>} {
+        %in_a : memref<?xi64>,
+        %in_b : memref<?xi64>,
+        %in_c : memref<?xi64>,
+        %out : memref<?xi64>
+    ) kernel attributes {spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi64>>} {
 
         // Constants
         %ci0    = arith.constant 0 : index
         %ci1    = arith.constant 1 : index
-        %c0     = arith.constant 0 : i32
-        %c1     = arith.constant 1 : i32
-        %c10    = arith.constant 10 : i32
+        %c0     = arith.constant 0 : i64
+        %c1     = arith.constant 1 : i64
+        %c10    = arith.constant 10 : i64
 
         %tId = gpu.thread_id x
         %bDim = gpu.block_dim x
@@ -43,7 +43,7 @@ gpu.module @kernels {
         %kId = arith.addi %kIdtmp, %tId : index
 
         // Initialize partial aggregate to zero
-        memref.store %c0, %out[%kId] : memref<?xi32>
+        memref.store %c0, %out[%kId] : memref<?xi64>
 
         // Iterate over tuples
         %start = arith.muli %kId, %tup_per_thr : index
@@ -52,15 +52,15 @@ gpu.module @kernels {
             %idx_cmp = arith.cmpi "ult", %idx0, %r_size : index
             scf.if %idx_cmp {
                 // Selection b + c > 10
-                %iu_b = memref.load %in_b[%idx0] : memref<?xi32>
-                %iu_c = memref.load %in_c[%idx0] : memref<?xi32>
-                %sum_cb = arith.addi %iu_b, %iu_c : i32
-                %sel = arith.cmpi "sgt", %sum_cb, %c10 : i32
+                %iu_b = memref.load %in_b[%idx0] : memref<?xi64>
+                %iu_c = memref.load %in_c[%idx0] : memref<?xi64>
+                %sum_cb = arith.addi %iu_b, %iu_c : i64
+                %sel = arith.cmpi "sgt", %sum_cb, %c10 : i64
                 scf.if %sel {
-                    %iu_a = memref.load %in_a[%idx0] : memref<?xi32>
-                    %tmp0 = memref.load %out[%kId] : memref<?xi32>
-                    %tmp1 = arith.addi %tmp0, %iu_a : i32
-                    memref.store %tmp1, %out[%kId] : memref<?xi32>
+                    %iu_a = memref.load %in_a[%idx0] : memref<?xi64>
+                    %tmp0 = memref.load %out[%kId] : memref<?xi64>
+                    %tmp1 = arith.addi %tmp0, %iu_a : i64
+                    memref.store %tmp1, %out[%kId] : memref<?xi64>
                 }   
             }
         }
@@ -69,16 +69,16 @@ gpu.module @kernels {
     }
 }
 
-func.func @main() -> i32 {
+func.func @main() -> i64 {
     // Constants
     %ci0    = arith.constant 0 : index
     %ci1    = arith.constant 1 : index
-    %c0     = arith.constant 0 : i32
-    %c1     = arith.constant 1 : i32
-    %c2     = arith.constant 2 : i32
-    %c4     = arith.constant 4 : i32
+    %c0     = arith.constant 0 : i64
+    %c1     = arith.constant 1 : i64
+    %c2     = arith.constant 2 : i64
+    %c4     = arith.constant 4 : i64
     // Relation Size
-    %size   = arith.constant 50000 : index
+    %size   = arith.constant 1000000 : index
     // Block Size
     %blk    = arith.constant 100 : index
     // Tuples per thread
@@ -101,66 +101,66 @@ func.func @main() -> i32 {
 
     // Allocate relation R (a -> bc) in column store
     // Init relation R on host
-    %a = memref.alloc(%size) : memref<?xi32>
-    %b = memref.alloc(%size) : memref<?xi32>
-    %c = memref.alloc(%size) : memref<?xi32>
-    %counter = memref.alloc() : memref<i32>
-    memref.store %c0, %counter[] : memref<i32>
+    %a = memref.alloc(%size) : memref<?xi64>
+    %b = memref.alloc(%size) : memref<?xi64>
+    %c = memref.alloc(%size) : memref<?xi64>
+    %counter = memref.alloc() : memref<i64>
+    memref.store %c0, %counter[] : memref<i64>
     scf.for %idx0 = %ci0 to %size step %ci1 {
-        %iu_a = memref.load %counter[] : memref<i32>
-        %b_tmp = memref.load %counter[] : memref<i32>
-        %iu_b = arith.muli %b_tmp, %c2 : i32
-        %c_tmp = memref.load %counter[] : memref<i32>
-        %iu_c = arith.muli %c_tmp, %c4 : i32
+        %iu_a = memref.load %counter[] : memref<i64>
+        %b_tmp = memref.load %counter[] : memref<i64>
+        %iu_b = arith.muli %b_tmp, %c2 : i64
+        %c_tmp = memref.load %counter[] : memref<i64>
+        %iu_c = arith.muli %c_tmp, %c4 : i64
 
-        %counter_new = arith.addi %iu_a, %c1 : i32
-        memref.store %counter_new, %counter[] : memref<i32>
-        memref.store %iu_a, %a[%idx0] : memref<?xi32>
-        memref.store %iu_b, %b[%idx0] : memref<?xi32>
-        memref.store %iu_c, %c[%idx0] : memref<?xi32>
+        %counter_new = arith.addi %iu_a, %c1 : i64
+        memref.store %counter_new, %counter[] : memref<i64>
+        memref.store %iu_a, %a[%idx0] : memref<?xi64>
+        memref.store %iu_b, %b[%idx0] : memref<?xi64>
+        memref.store %iu_c, %c[%idx0] : memref<?xi64>
     }
-    %h_out = memref.alloc(%naggr) : memref<?xi32>
+    %h_out = memref.alloc(%naggr) : memref<?xi64>
 
     // Register host memory
-    %a_unranked = memref.cast %a : memref<?xi32> to memref<*xi32>
-    %b_unranked = memref.cast %b : memref<?xi32> to memref<*xi32>
-    %c_unranked = memref.cast %c : memref<?xi32> to memref<*xi32>
-    %h_out_unranked = memref.cast %h_out : memref<?xi32> to memref<*xi32>
-    gpu.host_register %a_unranked : memref<*xi32>
-    gpu.host_register %b_unranked : memref<*xi32>
-    gpu.host_register %c_unranked : memref<*xi32>
-    gpu.host_register %h_out_unranked : memref<*xi32>
+    %a_unranked = memref.cast %a : memref<?xi64> to memref<*xi64>
+    %b_unranked = memref.cast %b : memref<?xi64> to memref<*xi64>
+    %c_unranked = memref.cast %c : memref<?xi64> to memref<*xi64>
+    %h_out_unranked = memref.cast %h_out : memref<?xi64> to memref<*xi64>
+    gpu.host_register %a_unranked : memref<*xi64>
+    gpu.host_register %b_unranked : memref<*xi64>
+    gpu.host_register %c_unranked : memref<*xi64>
+    gpu.host_register %h_out_unranked : memref<*xi64>
 
     // copy a to d_a on device.
-    %t_a0, %d_a = async.execute () -> !async.value<memref<?xi32>> {
-        %tmp_a = gpu.alloc(%size) : memref<?xi32>
-        gpu.memcpy %tmp_a, %a : memref<?xi32>, memref<?xi32>
-        async.yield %tmp_a : memref<?xi32>
+    %t_a0, %d_a = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_a = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_a, %a : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_a : memref<?xi64>
     }
     // copy b to d_b on device.
-    %t_b0, %d_b = async.execute () -> !async.value<memref<?xi32>> {
-        %tmp_b = gpu.alloc(%size) : memref<?xi32>
-        gpu.memcpy %tmp_b, %b : memref<?xi32>, memref<?xi32>
-        async.yield %tmp_b : memref<?xi32>
+    %t_b0, %d_b = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_b = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_b, %b : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_b : memref<?xi64>
     }
     // copy c to d_c on device.
-    %t_c0, %d_c = async.execute () -> !async.value<memref<?xi32>> {
-        %tmp_c = gpu.alloc(%size) : memref<?xi32>
-        gpu.memcpy %tmp_c, %c : memref<?xi32>, memref<?xi32>
-        async.yield %tmp_c : memref<?xi32>
+    %t_c0, %d_c = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_c = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_c, %c : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_c : memref<?xi64>
     }
     // Allocate memory for partial aggregates on device
-    %t_out0, %d_out = async.execute () -> !async.value<memref<?xi32>> {
-        %tmp_out0 = gpu.alloc(%naggr) : memref<?xi32>
-        async.yield %tmp_out0 : memref<?xi32>
+    %t_out0, %d_out = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_out0 = gpu.alloc(%naggr) : memref<?xi64>
+        async.yield %tmp_out0 : memref<?xi64>
     }
 
     // Launch kernel function
     %t_out1 = async.execute [%t_a0, %t_b0, %t_c0, %t_out0] (
-        %d_a as %in_a : !async.value<memref<?xi32>>,
-        %d_b as %in_b : !async.value<memref<?xi32>>,
-        %d_c as %in_c : !async.value<memref<?xi32>>,
-        %d_out as %out : !async.value<memref<?xi32>>
+        %d_a as %in_a : !async.value<memref<?xi64>>,
+        %d_b as %in_b : !async.value<memref<?xi64>>,
+        %d_c as %in_c : !async.value<memref<?xi64>>,
+        %d_out as %out : !async.value<memref<?xi64>>
     ) {
         gpu.launch_func @kernels::@select_sum
             blocks in (%grd, %ci1, %ci1)
@@ -168,39 +168,39 @@ func.func @main() -> i32 {
             args(
                 %size : index,
                 %tup : index,
-                %in_a : memref<?xi32>,
-                %in_b : memref<?xi32>,
-                %in_c : memref<?xi32>,
-                %out : memref<?xi32>
+                %in_a : memref<?xi64>,
+                %in_b : memref<?xi64>,
+                %in_c : memref<?xi64>,
+                %out : memref<?xi64>
             )
         async.yield
     }
 
     // Copy back partial aggregates to h_out
     %t_out2 = async.execute [%t_out1] (
-        %d_out as %out : !async.value<memref<?xi32>>
+        %d_out as %out : !async.value<memref<?xi64>>
     ) {
-        gpu.memcpy %h_out, %out : memref<?xi32>, memref<?xi32>
+        gpu.memcpy %h_out, %out : memref<?xi64>, memref<?xi64>
         async.yield
     }
 
     async.await %t_out2 : !async.token
 
     // Sum up partial ggregates
-    %ret0 = memref.alloc() : memref<i32>
-    memref.store %c0, %ret0[] : memref<i32>
+    %ret0 = memref.alloc() : memref<i64>
+    memref.store %c0, %ret0[] : memref<i64>
     scf.for %idx = %ci0 to %naggr step %ci1 {
-        %tmp0 = memref.load %ret0[] : memref<i32>
-        %tmp1 = memref.load %h_out[%idx] : memref<?xi32>
-        %tmp2 = arith.addi %tmp0, %tmp1 : i32
-        memref.store %tmp2, %ret0[] : memref<i32>
+        %tmp0 = memref.load %ret0[] : memref<i64>
+        %tmp1 = memref.load %h_out[%idx] : memref<?xi64>
+        %tmp2 = arith.addi %tmp0, %tmp1 : i64
+        memref.store %tmp2, %ret0[] : memref<i64>
     }
 
     // Load and return query result
-    %ret = memref.load %ret0[] : memref<i32>
-    return %ret : i32
+    %ret = memref.load %ret0[] : memref<i64>
+    return %ret : i64
 } 
 
 } // END gpu.container_module
 
-// CHECK: 1249974999
+// CHECK: 499999499999
