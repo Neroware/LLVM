@@ -12,6 +12,7 @@ set(LLVM_OPTIONAL_SOURCES
   RunnerUtils.cpp
   OptUtils.cpp
   JitRunner.cpp
+  Benchmarking.cpp
   )
 
 # Use a separate library for OptUtils, to avoid pulling in the entire JIT and
@@ -124,6 +125,7 @@ add_mlir_library(mlir_c_runner_utils
   CRunnerUtils.cpp
   Float16bits.cpp
   SparseTensorUtils.cpp
+  Benchmarking.cpp
 
   EXCLUDE_FROM_LIBMLIR
   )
