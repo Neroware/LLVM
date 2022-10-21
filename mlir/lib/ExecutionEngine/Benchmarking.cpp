@@ -5,6 +5,10 @@
 
 #include <cinttypes>
 #include <chrono>
+#include <unordered_map>
+#include <vector>
+#include <fstream>
+#include <string>
 
 // NOLINTBEGIN(*-identifier-naming)
 
@@ -22,24 +26,25 @@ extern "C" int64_t _mlir_bm_now() {
 
 extern "C" int64_t _mlir_bm_begin() {
   auto scope = new mlirbm::time_measurement_scope();
-  scope->start = _mlir_bm_now();
+  auto scope_ = reinterpret_cast<int64_t>(scope);
   scope->depth = 0;
   scope->scope = nullptr;
-  return reinterpret_cast<int64_t>(scope);
+  scope->start = _mlir_bm_now();
+  return scope_;
 }
 
 extern "C" void _mlir_bm_end(int64_t scope_) {
-  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
-  delete(scope);
+  delete(reinterpret_cast<mlirbm::time_measurement_scope*>(scope_));
 }
 
 extern "C" int64_t _mlir_bm_next_scope(int64_t scope_) {
   auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
   auto next = new mlirbm::time_measurement_scope();
-  next->start = _mlir_bm_now();
+  auto next_ = reinterpret_cast<int64_t>(next);
   next->depth = scope->depth + 1;
   next->scope = scope;
-  return reinterpret_cast<int64_t>(next);
+  next->start = _mlir_bm_now();
+  return next_;
 }
 
 extern "C" int64_t _mlir_bm_scope_end(int64_t scope_) {
@@ -50,11 +55,40 @@ extern "C" int64_t _mlir_bm_scope_end(int64_t scope_) {
 }
 
 extern "C" int64_t _mlir_bm_deltatime(int64_t scope_) {
-  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
   auto now = _mlir_bm_now();
+  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
   return now - scope->start;
 }
 
-//extern "C" void _mlir_bm_log_result(int64_t dt)
+extern "C" int64_t _mlir_bm_log_create() {
+  auto log = new mlirbm::time_measurement_log();
+  return reinterpret_cast<int64_t>(log);
+}
+
+extern "C" void _mlir_bm_log_append(int64_t log_, int64_t measure_id, int64_t time_ns) {
+  auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
+  log->data[measure_id].push_back(time_ns);
+}
+
+extern "C" void _mlir_bm_log_store(int64_t log_) {
+  auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
+  std::string output = "";
+  for (auto& it : log->data) {
+    output += std::to_string(it.first) + " ";
+    for (auto measure : it.second) {
+      output += std::to_string(measure) + " ";
+    }
+    output += "\n";
+  }
+
+  std::fstream logfile;
+  logfile.open("../../experimental/benchmarks/result.log", std::ios::out);
+  if (logfile.is_open()) {
+    logfile << output;
+  }
+  logfile.close();
+
+  delete(log);
+}
 
 // NOLINTEND(*-identifier-naming)
