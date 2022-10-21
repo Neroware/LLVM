@@ -1,0 +1,4 @@
+func.func @main() -> (i64) {
+    %out = arith.constant <value> : i64
+    func.return %out : i64
+}
