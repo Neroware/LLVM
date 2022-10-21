@@ -6,7 +6,6 @@
 #include <cinttypes>
 #include <chrono>
 #include <unordered_map>
-#include <vector>
 #include <fstream>
 #include <string>
 
@@ -67,24 +66,20 @@ extern "C" int64_t _mlir_bm_log_create() {
 
 extern "C" void _mlir_bm_log_append(int64_t log_, int64_t measure_id, int64_t time_ns) {
   auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
-  log->data[measure_id].push_back(time_ns);
+  log->data[measure_id] = time_ns;
 }
 
 extern "C" void _mlir_bm_log_store(int64_t log_) {
   auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
   std::string output = "";
   for (auto& it : log->data) {
-    output += std::to_string(it.first) + " ";
-    for (auto measure : it.second) {
-      output += std::to_string(measure) + " ";
-    }
-    output += "\n";
+    output += std::to_string(it.first) + ":" + std::to_string(it.second) + "ns ";
   }
 
   std::fstream logfile;
-  logfile.open("../../experimental/benchmarks/result.log", std::ios::out);
+  logfile.open("../../experimental/benchmarks/result.log", std::ios::app);
   if (logfile.is_open()) {
-    logfile << output;
+    logfile << output << std::endl;
   }
   logfile.close();
 
