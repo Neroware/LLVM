@@ -9,8 +9,8 @@ func.func private @_mlir_bm_now() -> i64
 
 func.func private @_mlir_bm_begin() -> i64
 func.func private @_mlir_bm_end(i64) -> ()
-func.func private @_mlir_bm_next_scope(i64) -> i64
-func.func private @_mlir_bm_scope_end(i64) -> i64
+func.func private @_mlir_bm_scope_next(i64) -> ()
+func.func private @_mlir_bm_scope_end(i64) -> ()
 
 func.func private @_mlir_bm_deltatime(i64) -> i64
 
@@ -34,6 +34,19 @@ def run_mlir(mlir : str, build_dir : str, benchmark_dir : str):
     os.system(comm3)
 
 
+def run_gpu_async_mlir(mlir : str, build_dir : str, benchmark_dir : str):
+    mlir_cpu_runner = build_dir + "bin/mlir-cpu-runner"
+    mlir_opt = build_dir + "bin/mlir-opt"
+
+    comm1 = mlir_opt + " " + mlir + " -gpu-kernel-outlining -pass-pipeline='func.func(convert-scf-to-cf),gpu.module(strip-debuginfo,convert-scf-to-cf,convert-gpu-to-nvvm,gpu-to-cubin)' -gpu-async-region -gpu-to-llvm -async-to-async-runtime -async-runtime-ref-counting -convert-async-to-llvm -convert-func-to-llvm > " + mlir + ".llvm"
+    os.system(comm1)
+
+    comm2 = mlir_cpu_runner + " " + mlir + ".llvm -e main -entry-point-result=i64 -O0 -shared-libs=" + build_dir + "lib/libmlir_cuda_runtime.so," + build_dir + "lib/libmlir_async_runtime.so," + build_dir + "lib/libmlir_runner_utils.so," + build_dir + "lib/libmlir_c_runner_utils.so"
+    os.system(comm2)
+
+    comm3 = "rm " + benchmark_dir + "tmp.*"
+    os.system(comm3)
+
 
 def run_benchmark(build_dir : str, benchmark_dir : str):
     with open(benchmark_dir + "/mlir.txt", "r") as mlir:
@@ -50,10 +63,12 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
             pattern = "<" + var[0] + ">"
             value = var[1 + run]
             mlir_src = re.sub(pattern, str(value), mlir_src)
+        insert_idx = mlir_src.find("func.func @main")
+        mlir_src = mlir_src[:insert_idx] + BENCHMARK_API + mlir_src[insert_idx:]
         with open(benchmark_dir + "tmp.mlir", "w") as mlir:
-            mlir.write(BENCHMARK_API + mlir_src)
+            mlir.write(mlir_src)
         
-        run_mlir(benchmark_dir + "tmp.mlir", build_dir, benchmark_dir)
+        run_gpu_async_mlir(benchmark_dir + "tmp.mlir", build_dir, benchmark_dir)
 
 
 if __name__ == "__main__":

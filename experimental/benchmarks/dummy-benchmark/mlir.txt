@@ -1,10 +1,12 @@
 func.func @main() -> (i64) {
-    %scope1 = func.call @_mlir_bm_begin() : () -> (i64)
+    %scope = func.call @_mlir_bm_begin() : () -> (i64)
+    func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
     %out = arith.constant <value> : i64
 
-    %time = func.call @_mlir_bm_deltatime(%scope1) : (i64) -> (i64)
-    func.call @_mlir_bm_end(%scope1) : (i64) -> ()
+    %time = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_end(%scope) : (i64) -> ()
 
     %log = func.call @_mlir_bm_log_create() : () -> (i64)
     %c42 = arith.constant 42 : i64

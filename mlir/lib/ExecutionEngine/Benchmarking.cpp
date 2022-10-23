@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <fstream>
 #include <string>
+#include <iomanip>
 
 // NOLINTBEGIN(*-identifier-naming)
 
@@ -24,39 +25,34 @@ extern "C" int64_t _mlir_bm_now() {
 }
 
 extern "C" int64_t _mlir_bm_begin() {
-  auto scope = new mlirbm::time_measurement_scope();
-  auto scope_ = reinterpret_cast<int64_t>(scope);
-  scope->depth = 0;
-  scope->scope = nullptr;
-  scope->start = _mlir_bm_now();
-  return scope_;
+  auto tm = new mlirbm::time_measurement();
+  tm->scope = nullptr;
+  return reinterpret_cast<int64_t>(tm);
 }
 
-extern "C" void _mlir_bm_end(int64_t scope_) {
-  delete(reinterpret_cast<mlirbm::time_measurement_scope*>(scope_));
+extern "C" void _mlir_bm_end(int64_t scope) {
+  delete(reinterpret_cast<mlirbm::time_measurement*>(scope));
 }
 
-extern "C" int64_t _mlir_bm_next_scope(int64_t scope_) {
-  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
+extern "C" void _mlir_bm_scope_next(int64_t scope) {
+  auto tm = reinterpret_cast<mlirbm::time_measurement*>(scope);
   auto next = new mlirbm::time_measurement_scope();
-  auto next_ = reinterpret_cast<int64_t>(next);
-  next->depth = scope->depth + 1;
-  next->scope = scope;
+  next->scope = tm->scope;
+  tm->scope = next;
   next->start = _mlir_bm_now();
-  return next_;
 }
 
-extern "C" int64_t _mlir_bm_scope_end(int64_t scope_) {
-  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
-  auto prev = scope->scope;
-  delete(scope);
-  return reinterpret_cast<int64_t>(prev);
+extern "C" void _mlir_bm_scope_end(int64_t scope) {
+  auto tm = reinterpret_cast<mlirbm::time_measurement*>(scope);
+  auto prev = tm->scope;
+  tm->scope = prev->scope;
+  delete(prev);
 }
 
-extern "C" int64_t _mlir_bm_deltatime(int64_t scope_) {
+extern "C" int64_t _mlir_bm_deltatime(int64_t scope) {
   auto now = _mlir_bm_now();
-  auto scope = reinterpret_cast<mlirbm::time_measurement_scope*>(scope_);
-  return now - scope->start;
+  auto tm = reinterpret_cast<mlirbm::time_measurement*>(scope);
+  return now - tm->scope->start;
 }
 
 extern "C" int64_t _mlir_bm_log_create() {
@@ -71,15 +67,13 @@ extern "C" void _mlir_bm_log_append(int64_t log_, int64_t measure_id, int64_t ti
 
 extern "C" void _mlir_bm_log_store(int64_t log_) {
   auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
-  std::string output = "";
-  for (auto& it : log->data) {
-    output += std::to_string(it.first) + ":" + std::to_string(it.second) + "ns ";
-  }
-
   std::fstream logfile;
   logfile.open("../../experimental/benchmarks/result.log", std::ios::app);
   if (logfile.is_open()) {
-    logfile << output << std::endl;
+    for (auto& it : log->data) {
+      logfile << it.first << ":" << std::setprecision(3) << (it.second / 1000000.0) << "ms ";
+    }
+    logfile << std::endl;
   }
   logfile.close();
 
