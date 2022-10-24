@@ -51,7 +51,7 @@ def run_gpu_async_mlir(mlir : str, build_dir : str, benchmark_dir : str):
 def run_benchmark(build_dir : str, benchmark_dir : str):
     with open(benchmark_dir + "/mlir.txt", "r") as mlir:
         src : str = mlir.read()
-    with open(benchmark_dir + "/gen.csv", "r") as listings:
+    with open(benchmark_dir + "/gen.txt", "r") as listings:
         lines = listings.readlines()
 
     lines = [x.split(" ") for x in lines]

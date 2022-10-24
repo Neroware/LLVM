@@ -61,10 +61,15 @@ func.func @main() -> i64 {
 
     // copy hdata to ddata on device.
     %t_in0, %ddata = async.execute () -> !async.value<memref<?xi64>> {
+        %tmpdata = gpu.alloc(%size) : memref<?xi64>
+
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
-        %tmpdata = gpu.alloc(%size) : memref<?xi64>
         gpu.memcpy %tmpdata, %hdata : memref<?xi64>, memref<?xi64>
+        
+        %time0 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c0, %time0) : (i64, i64, i64) -> ()
+
         async.yield %tmpdata : memref<?xi64>
     }
 
@@ -72,14 +77,16 @@ func.func @main() -> i64 {
     %t_out0 = async.execute [%t_in0] (
         %ddata as %in : !async.value<memref<?xi64>>
     ) {
-        %time0 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
-        func.call @_mlir_bm_log_append(%log, %c0, %time0) : (i64, i64, i64) -> ()
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
         gpu.launch_func @kernels::@idle
             blocks in (%grd, %ci1, %ci1)
             threads in (%blk, %ci1, %ci1)
             args(%in : memref<?xi64>)
+        
+        %time1 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c1, %time1) : (i64, i64, i64) -> ()
+
         async.yield
     }
 
@@ -87,18 +94,17 @@ func.func @main() -> i64 {
     %t_out1 = async.execute [%t_out0] (
         %ddata as %out : !async.value<memref<?xi64>>
     ) {
-        %time1 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
-        func.call @_mlir_bm_log_append(%log, %c1, %time1) : (i64, i64, i64) -> ()
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
         gpu.memcpy %hdata, %out : memref<?xi64>, memref<?xi64>
+
+        %time2 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c2, %time2) : (i64, i64, i64) -> ()
+
         async.yield
     }
 
     async.await %t_out1 : !async.token
-
-    %time2 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
-    func.call @_mlir_bm_log_append(%log, %c2, %time2) : (i64, i64, i64) -> ()
 
     func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
     func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
