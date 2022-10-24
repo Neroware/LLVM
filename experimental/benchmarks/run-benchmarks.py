@@ -55,6 +55,13 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
         lines = listings.readlines()
 
     lines = [x.split(" ") for x in lines]
+    for l_idx in range(len(lines)):
+        line = lines[l_idx]
+        if line[1] == "from" and line[3] == "to" and line[5] == "step":
+            from_ = int(line[2])
+            to_ = int(line[4])
+            step_ = int(line[6])
+            lines[l_idx] = [line[0]] + [str(x) for x in range(from_, to_ + 1, step_)]
     assert all([len(x) == len(lines[0]) for x in lines])
 
     for run in range(len(lines[0]) - 1):

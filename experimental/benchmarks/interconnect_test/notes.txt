@@ -1,0 +1,3 @@
+How much throughput on the interconnect can we actually achieve?
+- Relation-Size is increased step-by-step
+- GPU launches kernel with minimal workload
