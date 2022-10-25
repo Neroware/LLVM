@@ -1,0 +1,218 @@
+module attributes {gpu.container_module} {
+
+gpu.module @kernels {
+    gpu.func @select_sum(
+        %r_size : index, 
+        %tup_per_thr : index,
+        %in : memref<?xi8>,
+        %out : memref<?xi8>
+    ) kernel attributes {spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi64>>} {
+
+        // Constants
+        %ci0    = arith.constant 0 : index
+        %ci1    = arith.constant 1 : index
+        %c0     = arith.constant 0 : i64
+        %c1     = arith.constant 1 : i64
+        %c10    = arith.constant 10 : i64
+
+        %tId = gpu.thread_id x
+        %bDim = gpu.block_dim x
+        %bId = gpu.block_id x
+
+        // Kernel Index
+        %kIdtmp = arith.muli %bId, %bDim : index
+        %kId = arith.addi %kIdtmp, %tId : index
+
+        // Initialize partial aggregate to zero
+        memref.store %c0, %out[%kId] : memref<?xi64>
+
+        // Iterate over tuples
+        %start = arith.muli %kId, %tup_per_thr : index
+        %end = arith.addi %start, %tup_per_thr : index
+        scf.for %idx0 = %start to %end step %ci1 {
+            %idx_cmp = arith.cmpi "ult", %idx0, %r_size : index
+            scf.if %idx_cmp {
+                // Selection b + c > 10
+                %iu_b = memref.load %in_b[%idx0] : memref<?xi64>
+                %iu_c = memref.load %in_c[%idx0] : memref<?xi64>
+                %sum_cb = arith.addi %iu_b, %iu_c : i64
+                %sel = arith.cmpi "sgt", %sum_cb, %c10 : i64
+                scf.if %sel {
+                    %iu_a = memref.load %in_a[%idx0] : memref<?xi64>
+                    %tmp0 = memref.load %out[%kId] : memref<?xi64>
+                    %tmp1 = arith.addi %tmp0, %iu_a : i64
+                    memref.store %tmp1, %out[%kId] : memref<?xi64>
+                }   
+            }
+        }
+
+        gpu.return
+    }
+}
+
+func.func @main() -> i64 {
+    %log = func.call @_mlir_bm_log_create() : () -> (i64)
+    %scope = func.call @_mlir_bm_begin() : () -> (i64)
+    func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+    // Constants
+    %ci0    = arith.constant 0 : index
+    %ci1    = arith.constant 1 : index
+    %c0     = arith.constant 0 : i64
+    %c1     = arith.constant 1 : i64
+    %c2     = arith.constant 2 : i64
+    %c3     = arith.constant 3 : i64
+    %c4     = arith.constant 4 : i64
+    %c5     = arith.constant 5 : i64
+    %c6     = arith.constant 6 : i64
+    // Relation Size
+    %size   = arith.constant <size> : index
+    // Block Size
+    %blk    = arith.constant 100 : index
+    // Tuples per thread
+    %tup    = arith.constant 100 : index
+
+    // Compute grid size from block size and tuples per thread
+    %blk_tup = arith.muli %blk, %tup : index
+    %grd_tmp0 = arith.divui %size, %blk_tup : index
+    %grd_tmp1 = arith.muli %grd_tmp0, %blk_tup : index
+    %grd_tmp2 = arith.subi %size, %grd_tmp1 : index
+    %grd_cmp = arith.cmpi "ne", %grd_tmp2, %ci0 : index
+    %grd0 = memref.alloc() : memref<index>
+    memref.store %grd_tmp0, %grd0[] : memref<index>
+    scf.if %grd_cmp {
+        %grd_tmp3 = arith.addi %grd_tmp0, %ci1 : index
+        memref.store %grd_tmp3, %grd0[] : memref<index>
+    }
+    %grd = memref.load %grd0[] : memref<index>
+    %naggr = arith.muli %grd, %blk : index
+
+    // Allocate relation R (a -> bc) in column store
+    // Init relation R on host
+    %a = memref.alloc(%size) : memref<?xi64>
+    %b = memref.alloc(%size) : memref<?xi64>
+    %c = memref.alloc(%size) : memref<?xi64>
+    %counter = memref.alloc() : memref<i64>
+    memref.store %c0, %counter[] : memref<i64>
+    scf.for %idx0 = %ci0 to %size step %ci1 {
+        %iu_a = memref.load %counter[] : memref<i64>
+        %b_tmp = memref.load %counter[] : memref<i64>
+        %iu_b = arith.muli %b_tmp, %c2 : i64
+        %c_tmp = memref.load %counter[] : memref<i64>
+        %iu_c = arith.muli %c_tmp, %c4 : i64
+
+        %counter_new = arith.addi %iu_a, %c1 : i64
+        memref.store %counter_new, %counter[] : memref<i64>
+        memref.store %iu_a, %a[%idx0] : memref<?xi64>
+        memref.store %iu_b, %b[%idx0] : memref<?xi64>
+        memref.store %iu_c, %c[%idx0] : memref<?xi64>
+    }
+    %h_out = memref.alloc(%naggr) : memref<?xi64>
+
+    // Register host memory
+    %a_unranked = memref.cast %a : memref<?xi64> to memref<*xi64>
+    %b_unranked = memref.cast %b : memref<?xi64> to memref<*xi64>
+    %c_unranked = memref.cast %c : memref<?xi64> to memref<*xi64>
+    %h_out_unranked = memref.cast %h_out : memref<?xi64> to memref<*xi64>
+    gpu.host_register %a_unranked : memref<*xi64>
+    gpu.host_register %b_unranked : memref<*xi64>
+    gpu.host_register %c_unranked : memref<*xi64>
+    gpu.host_register %h_out_unranked : memref<*xi64>
+
+    %time0 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+    func.call @_mlir_bm_log_append(%log, %c0, %time0) : (i64, i64, i64) -> ()
+    func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+    // copy a to d_a on device.
+    %t_a0, %d_a = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_a = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_a, %a : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_a : memref<?xi64>
+    }
+    // copy b to d_b on device.
+    %t_b0, %d_b = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_b = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_b, %b : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_b : memref<?xi64>
+    }
+    // copy c to d_c on device.
+    %t_c0, %d_c = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_c = gpu.alloc(%size) : memref<?xi64>
+        gpu.memcpy %tmp_c, %c : memref<?xi64>, memref<?xi64>
+        async.yield %tmp_c : memref<?xi64>
+    }
+    // Allocate memory for partial aggregates on device
+    %t_out0, %d_out = async.execute () -> !async.value<memref<?xi64>> {
+        %tmp_out0 = gpu.alloc(%naggr) : memref<?xi64>
+        async.yield %tmp_out0 : memref<?xi64>
+    }
+
+    // Launch kernel function
+    %t_out1 = async.execute [%t_a0, %t_b0, %t_c0, %t_out0] (
+        %d_a as %in_a : !async.value<memref<?xi64>>,
+        %d_b as %in_b : !async.value<memref<?xi64>>,
+        %d_c as %in_c : !async.value<memref<?xi64>>,
+        %d_out as %out : !async.value<memref<?xi64>>
+    ) {
+        %time1 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c1, %time1) : (i64, i64, i64) -> ()
+        func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+        gpu.launch_func @kernels::@select_sum
+            blocks in (%grd, %ci1, %ci1)
+            threads in (%blk, %ci1, %ci1)
+            args(
+                %size : index,
+                %tup : index,
+                %in_a : memref<?xi64>,
+                %in_b : memref<?xi64>,
+                %in_c : memref<?xi64>,
+                %out : memref<?xi64>
+            )
+        async.yield
+    }
+
+    // Copy back partial aggregates to h_out
+    %t_out2 = async.execute [%t_out1] (
+        %d_out as %out : !async.value<memref<?xi64>>
+    ) {
+        %time2 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c2, %time2) : (i64, i64, i64) -> ()
+        func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+        gpu.memcpy %h_out, %out : memref<?xi64>, memref<?xi64>
+        async.yield
+    }
+
+    async.await %t_out2 : !async.token
+
+    %time3 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+    func.call @_mlir_bm_log_append(%log, %c3, %time3) : (i64, i64, i64) -> ()
+
+    // Sum up partial ggregates
+    %ret0 = memref.alloc() : memref<i64>
+    memref.store %c0, %ret0[] : memref<i64>
+    scf.for %idx = %ci0 to %naggr step %ci1 {
+        %tmp0 = memref.load %ret0[] : memref<i64>
+        %tmp1 = memref.load %h_out[%idx] : memref<?xi64>
+        %tmp2 = arith.addi %tmp0, %tmp1 : i64
+        memref.store %tmp2, %ret0[] : memref<i64>
+    }
+
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+
+    %time4 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+    func.call @_mlir_bm_log_append(%log, %c4, %time4) : (i64, i64, i64) -> ()
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_end(%scope) : (i64) -> ()
+
+    func.call @_mlir_bm_log_store(%log) : (i64) -> ()
+
+    // Load and return query result
+    %ret = memref.load %ret0[] : memref<i64>
+    return %ret : i64
+} 
+
+} // END gpu.container_module

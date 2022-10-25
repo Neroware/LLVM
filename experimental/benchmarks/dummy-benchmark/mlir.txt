@@ -2,7 +2,7 @@ func.func @main() -> (i64) {
     %scope = func.call @_mlir_bm_begin() : () -> (i64)
     func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
-    %out = arith.constant <value> : i64
+    %out = arith.constant <value1> : i64
 
     %time = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
     func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()

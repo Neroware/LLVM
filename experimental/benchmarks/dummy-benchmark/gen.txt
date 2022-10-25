@@ -1,1 +1,4 @@
-value 0 10 20 100 1000 10000 100000
+value1 0 10 20 100 1000 10000 100000
+value2 from 10 to 70 step 10
+value3 groupby 1 2 3
+value4 groupby a b

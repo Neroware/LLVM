@@ -56,21 +56,43 @@ def _append_unit_zeros(value : str) -> str:
     value = re.sub("G", "000000000", value)
     return value
 
+def _parse_genfile(lines):
+    for l_idx in range(len(lines)):
+        line = lines[l_idx]
+
+        # from <start> to <to incl.> step <step>
+        if line[1] == "from" and line[3] == "to" and line[5] == "step":
+            from_ = int(_append_unit_zeros(line[2]))
+            to_ = int(_append_unit_zeros(line[4]))
+            step_ = int(_append_unit_zeros(line[6]))
+            lines[l_idx] = [line[0]] + [str(x) for x in range(from_, to_ + 1, step_)]
+
+        # groupby <groups...>
+        elif line[1] == "groupby":
+            groups_ = line[2:]
+            group_runs_ = 0
+            for l_idx2 in range(len(lines)):
+                if l_idx == l_idx2 or lines[l_idx2][1] == "groupby":
+                    continue
+                group_runs_ = len(lines[l_idx2]) - 1
+                lines[l_idx2] = [lines[l_idx2][0]] + (lines[l_idx2][1:] * len(groups_))
+            lines[l_idx] = [lines[l_idx][0]]
+            for group in groups_:
+                lines[l_idx] = lines[l_idx] + (group_runs_ * [group])
+            
+    assert all([len(x) == len(lines[0]) for x in lines])
+
+    return lines
+
+
 def run_benchmark(build_dir : str, benchmark_dir : str):
     with open(benchmark_dir + "/mlir.txt", "r") as mlir:
         src : str = mlir.read()
     with open(benchmark_dir + "/gen.txt", "r") as listings:
         lines = listings.readlines()
 
-    lines = [x.split(" ") for x in lines]
-    for l_idx in range(len(lines)):
-        line = lines[l_idx]
-        if line[1] == "from" and line[3] == "to" and line[5] == "step":
-            from_ = int(_append_unit_zeros(line[2]))
-            to_ = int(_append_unit_zeros(line[4]))
-            step_ = int(_append_unit_zeros(line[6]))
-            lines[l_idx] = [line[0]] + [str(x) for x in range(from_, to_ + 1, step_)]
-    assert all([len(x) == len(lines[0]) for x in lines])
+    lines = map(lambda s: s.strip(), lines)
+    lines = _parse_genfile([x.split(" ") for x in lines])
 
     for run in range(len(lines[0]) - 1):
         mlir_src = src
@@ -89,8 +111,8 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
         print("=================")
         print("RUN: ", run)
         for var in lines:
-            for var in lines:
-                print(var[0] + "=" + var[1 + run])
+            print(var[0] + "=" + var[1 + run])
+        print("\nEXIT CODE ")
 
         run_gpu_async_mlir(benchmark_dir + "tmp.mlir", build_dir, benchmark_dir)
 
