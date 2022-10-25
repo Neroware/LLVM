@@ -2,7 +2,7 @@ module attributes {gpu.container_module} {
 
 gpu.module @kernels {
     gpu.func @idle(
-        %inout : memref<?xi64>
+        %inout : memref<?xi8>
     ) kernel attributes {spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi64>>} {
         gpu.return
     }
@@ -22,6 +22,10 @@ func.func @main() -> i64 {
     %c4     = arith.constant 4 : i64
     %c5     = arith.constant 5 : i64
     %c6     = arith.constant 6 : i64
+
+    %cb0    = arith.constant 0 : i8
+    %cb1    = arith.constant 1 : i8
+
     // Relation Size
     %size   = arith.constant <size> : index
     // Block Size
@@ -45,44 +49,44 @@ func.func @main() -> i64 {
     %naggr = arith.muli %grd, %blk : index
 
     // Allocate and populate data on host
-    %hdata = memref.alloc(%size) : memref<?xi64>
-    %counter = memref.alloc() : memref<i64>
-    memref.store %c0, %counter[] : memref<i64>
+    %hdata = memref.alloc(%size) : memref<?xi8>
+    %counter = memref.alloc() : memref<i8>
+    memref.store %cb0, %counter[] : memref<i8>
     scf.for %idx0 = %ci0 to %size step %ci1 {
-        %iu = memref.load %counter[] : memref<i64>
-        %counter_new = arith.addi %iu, %c1 : i64
-        memref.store %counter_new, %counter[] : memref<i64>
-        memref.store %iu, %hdata[%idx0] : memref<?xi64>
+        %iu = memref.load %counter[] : memref<i8>
+        %counter_new = arith.addi %iu, %cb1 : i8
+        memref.store %counter_new, %counter[] : memref<i8>
+        memref.store %iu, %hdata[%idx0] : memref<?xi8>
     }
 
     // Register host memory
-    %hdata_unranked = memref.cast %hdata : memref<?xi64> to memref<*xi64>
-    gpu.host_register %hdata_unranked : memref<*xi64>
+    %hdata_unranked = memref.cast %hdata : memref<?xi8> to memref<*xi8>
+    gpu.host_register %hdata_unranked : memref<*xi8>
 
     // copy hdata to ddata on device.
-    %t_in0, %ddata = async.execute () -> !async.value<memref<?xi64>> {
-        %tmpdata = gpu.alloc(%size) : memref<?xi64>
+    %t_in0, %ddata = async.execute () -> !async.value<memref<?xi8>> {
+        %tmpdata = gpu.alloc(%size) : memref<?xi8>
 
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
-        gpu.memcpy %tmpdata, %hdata : memref<?xi64>, memref<?xi64>
+        gpu.memcpy %tmpdata, %hdata : memref<?xi8>, memref<?xi8>
         
         %time0 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
         func.call @_mlir_bm_log_append(%log, %c0, %time0) : (i64, i64, i64) -> ()
 
-        async.yield %tmpdata : memref<?xi64>
+        async.yield %tmpdata : memref<?xi8>
     }
 
     // Launch kernel function
     %t_out0 = async.execute [%t_in0] (
-        %ddata as %in : !async.value<memref<?xi64>>
+        %ddata as %in : !async.value<memref<?xi8>>
     ) {
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
         gpu.launch_func @kernels::@idle
             blocks in (%grd, %ci1, %ci1)
             threads in (%blk, %ci1, %ci1)
-            args(%in : memref<?xi64>)
+            args(%in : memref<?xi8>)
         
         %time1 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
         func.call @_mlir_bm_log_append(%log, %c1, %time1) : (i64, i64, i64) -> ()
@@ -92,11 +96,11 @@ func.func @main() -> i64 {
 
     // Copy back memory from device to host
     %t_out1 = async.execute [%t_out0] (
-        %ddata as %out : !async.value<memref<?xi64>>
+        %ddata as %out : !async.value<memref<?xi8>>
     ) {
         func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
 
-        gpu.memcpy %hdata, %out : memref<?xi64>, memref<?xi64>
+        gpu.memcpy %hdata, %out : memref<?xi8>, memref<?xi8>
 
         %time2 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
         func.call @_mlir_bm_log_append(%log, %c2, %time2) : (i64, i64, i64) -> ()

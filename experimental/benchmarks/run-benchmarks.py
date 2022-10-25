@@ -20,6 +20,8 @@ func.func private @_mlir_bm_log_store(i64) -> ()
 
 """
 
+OUTPUT_FILEPATH = "result.log"
+
 def run_mlir(mlir : str, build_dir : str, benchmark_dir : str):
     mlir_cpu_runner = build_dir + "bin/mlir-cpu-runner"
     mlir_opt = build_dir + "bin/mlir-opt"
@@ -48,6 +50,12 @@ def run_gpu_async_mlir(mlir : str, build_dir : str, benchmark_dir : str):
     os.system(comm3)
 
 
+def _append_unit_zeros(value : str) -> str:
+    value = re.sub("k", "000", value)
+    value = re.sub("M", "000000", value)
+    value = re.sub("G", "000000000", value)
+    return value
+
 def run_benchmark(build_dir : str, benchmark_dir : str):
     with open(benchmark_dir + "/mlir.txt", "r") as mlir:
         src : str = mlir.read()
@@ -58,9 +66,9 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
     for l_idx in range(len(lines)):
         line = lines[l_idx]
         if line[1] == "from" and line[3] == "to" and line[5] == "step":
-            from_ = int(line[2])
-            to_ = int(line[4])
-            step_ = int(line[6])
+            from_ = int(_append_unit_zeros(line[2]))
+            to_ = int(_append_unit_zeros(line[4]))
+            step_ = int(_append_unit_zeros(line[6]))
             lines[l_idx] = [line[0]] + [str(x) for x in range(from_, to_ + 1, step_)]
     assert all([len(x) == len(lines[0]) for x in lines])
 
@@ -68,12 +76,15 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
         mlir_src = src
         for var in lines:
             pattern = "<" + var[0] + ">"
-            value = var[1 + run]
+            value = _append_unit_zeros(var[1 + run])
             mlir_src = re.sub(pattern, str(value), mlir_src)
         insert_idx = mlir_src.find("func.func @main")
         mlir_src = mlir_src[:insert_idx] + BENCHMARK_API + mlir_src[insert_idx:]
         with open(benchmark_dir + "tmp.mlir", "w") as mlir:
             mlir.write(mlir_src)
+        with open(OUTPUT_FILEPATH, "a") as output_file:
+            for var in lines:
+                output_file.write(var[0] + ", " + var[1 + run] + ", ")
         
         run_gpu_async_mlir(benchmark_dir + "tmp.mlir", build_dir, benchmark_dir)
 

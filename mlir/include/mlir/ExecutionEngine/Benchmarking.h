@@ -6,7 +6,7 @@
 
 #include "mlir/ExecutionEngine/RunnerUtils.h"
 
-#include <unordered_map>
+#include <map>
 
 namespace mlirbm{
 
@@ -20,7 +20,7 @@ struct time_measurement {
 };
 
 struct time_measurement_log {
-    std::unordered_map<int64_t, int64_t> data;
+    std::map<int64_t, int64_t> data;
 };
 
 } // END mlirbm

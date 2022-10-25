@@ -5,7 +5,7 @@
 
 #include <cinttypes>
 #include <chrono>
-#include <unordered_map>
+#include <map>
 #include <fstream>
 #include <string>
 #include <iomanip>
@@ -71,7 +71,7 @@ extern "C" void _mlir_bm_log_store(int64_t log_) {
   logfile.open("../../experimental/benchmarks/result.log", std::ios::app);
   if (logfile.is_open()) {
     for (auto& it : log->data) {
-      logfile << it.first << ":" << std::setprecision(3) << (it.second / 1000000.0) << "ms ";
+      logfile << std::setprecision(3) << (it.second / 1000000.0) << "ms, ";
     }
     logfile << std::endl;
   }
