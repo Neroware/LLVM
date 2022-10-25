@@ -6,6 +6,8 @@
 
 #include "mlir/ExecutionEngine/RunnerUtils.h"
 
+#define OUTPUT_CSVFILE "../../experimental/benchmarks/result.csv"
+
 #include <map>
 
 namespace mlirbm{

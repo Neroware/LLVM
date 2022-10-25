@@ -20,7 +20,7 @@ func.func private @_mlir_bm_log_store(i64) -> ()
 
 """
 
-OUTPUT_FILEPATH = "result.log"
+OUTPUT_FILEPATH = "result.csv"
 
 def run_mlir(mlir : str, build_dir : str, benchmark_dir : str):
     mlir_cpu_runner = build_dir + "bin/mlir-cpu-runner"
@@ -86,6 +86,12 @@ def run_benchmark(build_dir : str, benchmark_dir : str):
             for var in lines:
                 output_file.write(var[0] + ", " + var[1 + run] + ", ")
         
+        print("=================")
+        print("RUN: ", run)
+        for var in lines:
+            for var in lines:
+                print(var[0] + "=" + var[1 + run])
+
         run_gpu_async_mlir(benchmark_dir + "tmp.mlir", build_dir, benchmark_dir)
 
 

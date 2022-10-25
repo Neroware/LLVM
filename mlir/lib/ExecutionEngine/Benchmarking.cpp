@@ -68,7 +68,7 @@ extern "C" void _mlir_bm_log_append(int64_t log_, int64_t measure_id, int64_t ti
 extern "C" void _mlir_bm_log_store(int64_t log_) {
   auto log = reinterpret_cast<mlirbm::time_measurement_log*>(log_);
   std::fstream logfile;
-  logfile.open("../../experimental/benchmarks/result.log", std::ios::app);
+  logfile.open(OUTPUT_CSVFILE, std::ios::app);
   if (logfile.is_open()) {
     for (auto& it : log->data) {
       logfile << std::setprecision(3) << (it.second / 1000000.0) << "ms, ";
