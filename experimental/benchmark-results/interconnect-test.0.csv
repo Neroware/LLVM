@@ -1,3 +1,4 @@
+var0, val0, cpu2gpu, kernel, gpu2cpu,
 size, 250000000, 20.9ms, 0.332ms, 19.3ms, 
 size, 500000000, 42ms, 0.538ms, 39.2ms, 
 size, 750000000, 62.7ms, 0.753ms, 57.9ms, 

@@ -1,0 +1,137 @@
+module attributes {gpu.container_module} {
+
+gpu.module @kernels {
+    gpu.func @idle(
+        %inout : memref<?xi8>
+    ) kernel attributes {spv.entry_point_abi = #spv.entry_point_abi<local_size = dense<[1, 1, 1]>: vector<3xi64>>} {
+        gpu.return
+    }
+}
+
+func.func @main() -> i64 {
+    %log = func.call @_mlir_bm_log_create() : () -> (i64)
+    %scope = func.call @_mlir_bm_begin() : () -> (i64)
+
+    // Constants
+    %ci0    = arith.constant 0 : index
+    %ci1    = arith.constant 1 : index
+    %c0     = arith.constant 0 : i64
+    %c1     = arith.constant 1 : i64
+    %c2     = arith.constant 2 : i64
+    %c3     = arith.constant 3 : i64
+    %c4     = arith.constant 4 : i64
+    %c5     = arith.constant 5 : i64
+    %c6     = arith.constant 6 : i64
+
+    %cb0    = arith.constant 0 : i8
+    %cb1    = arith.constant 1 : i8
+
+    // Relation Size
+    %size   = arith.constant <size> : index
+    // Block Size
+    %blk    = arith.constant 100 : index
+    // Tuples per thread
+    %tup    = arith.constant 100 : index
+
+    // Compute grid size from block size and tuples per thread
+    %blk_tup = arith.muli %blk, %tup : index
+    %grd_tmp0 = arith.divui %size, %blk_tup : index
+    %grd_tmp1 = arith.muli %grd_tmp0, %blk_tup : index
+    %grd_tmp2 = arith.subi %size, %grd_tmp1 : index
+    %grd_cmp = arith.cmpi "ne", %grd_tmp2, %ci0 : index
+    %grd0 = memref.alloc() : memref<index>
+    memref.store %grd_tmp0, %grd0[] : memref<index>
+    scf.if %grd_cmp {
+        %grd_tmp3 = arith.addi %grd_tmp0, %ci1 : index
+        memref.store %grd_tmp3, %grd0[] : memref<index>
+    }
+    %grd = memref.load %grd0[] : memref<index>
+    %naggr = arith.muli %grd, %blk : index
+
+    // Allocate and populate data on host
+    %hdata = memref.alloc(%size) : memref<?xi8>
+    %counter = memref.alloc() : memref<i8>
+    memref.store %cb0, %counter[] : memref<i8>
+    scf.for %idx0 = %ci0 to %size step %ci1 {
+        %iu = memref.load %counter[] : memref<i8>
+        %counter_new = arith.addi %iu, %cb1 : i8
+        memref.store %counter_new, %counter[] : memref<i8>
+        memref.store %iu, %hdata[%idx0] : memref<?xi8>
+    }
+
+    // Register host memory
+    %hdata_unranked = memref.cast %hdata : memref<?xi8> to memref<*xi8>
+    gpu.host_register %hdata_unranked : memref<*xi8>
+
+    // copy hdata to ddata on device. 
+    // Repeat 2 times
+    %t_in0_rep0, %ddata = async.execute () -> !async.value<memref<?xi8>> {
+        %tmpdata = gpu.alloc(%size) : memref<?xi8>
+
+        func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+        gpu.memcpy %tmpdata, %hdata : memref<?xi8>, memref<?xi8>
+        
+        %time0 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c0, %time0) : (i64, i64, i64) -> ()
+
+        async.yield %tmpdata : memref<?xi8>
+    }
+    %t_in0_rep1 = async.execute [%t_in0_rep0] (
+        %ddata as %in : !async.value<memref<?xi8>>
+    ) {
+        func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+        gpu.memcpy %in, %hdata : memref<?xi8>, memref<?xi8>
+        
+        %time1 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c1, %time1) : (i64, i64, i64) -> ()
+
+        async.yield
+    }
+    %t_in0_rep2 = async.execute [%t_in0_rep1] (
+        %ddata as %in : !async.value<memref<?xi8>>
+    ) {
+        func.call @_mlir_bm_scope_next(%scope) : (i64) -> ()
+
+        gpu.memcpy %in, %hdata : memref<?xi8>, memref<?xi8>
+        
+        %time2 = func.call @_mlir_bm_deltatime(%scope) : (i64) -> (i64)
+        func.call @_mlir_bm_log_append(%log, %c2, %time2) : (i64, i64, i64) -> ()
+
+        async.yield
+    }
+
+    // Launch kernel function
+    %t_out0 = async.execute [%t_in0_rep2] (
+        %ddata as %in : !async.value<memref<?xi8>>
+    ) {
+        gpu.launch_func @kernels::@idle
+            blocks in (%grd, %ci1, %ci1)
+            threads in (%blk, %ci1, %ci1)
+            args(%in : memref<?xi8>)
+
+        async.yield
+    }
+
+    // Copy back memory from device to host
+    %t_out1 = async.execute [%t_out0] (
+        %ddata as %out : !async.value<memref<?xi8>>
+    ) {
+        gpu.memcpy %hdata, %out : memref<?xi8>, memref<?xi8>
+        async.yield
+    }
+
+    async.await %t_out1 : !async.token
+
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_scope_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_end(%scope) : (i64) -> ()
+    func.call @_mlir_bm_log_store(%log) : (i64) -> ()
+
+    // Return Exit Success
+    return %c0 : i64
+} 
+
+} // END gpu.container_module
