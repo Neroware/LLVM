@@ -950,6 +950,49 @@ def GPU_AllocOp : GPU_Op<"alloc", [
   let hasCanonicalizer = 1;
 }
 
+def GPU_AllocHostOp : GPU_Op<"alloc_host", [
+    GPU_AsyncOpInterface,
+    AttrSizedOperandSegments
+  ]> {
+
+  let summary = "Host page-locked memory allocation operation.";
+  let description = [{
+    The `gpu.alloc_host` operation allocates a region of memory that is page-locked
+    on the host. The driver tracks the virtual memory ranges allocated and automatically
+    accelerates memory transfers between host and device memory.
+
+    The op does not execute before all async dependencies have finished
+    executing.
+
+    If the `async` keyword is present, the op is executed asynchronously (i.e.
+    it does not block until the execution has finished on the device). In
+    that case, it also returns a !gpu.async.token.
+
+    Example:
+
+    ```mlir
+    %memref, %token = gpu.alloc_host async [%dep] (%width) : memref<64x?xf32, 1>
+    ```
+  }];
+
+  let arguments = (ins Variadic<GPU_AsyncToken>:$asyncDependencies,
+                   Variadic<Index>:$dynamicSizes, Variadic<Index>:$symbolOperands);
+  let results = (outs Res<AnyMemRef, "", [MemAlloc]>:$memref,
+                 Optional<GPU_AsyncToken>:$asyncToken);
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return memref().getType().cast<MemRefType>(); }
+  }];
+
+  let assemblyFormat = [{
+    custom<AsyncDependencies>(type($asyncToken), $asyncDependencies) ` `
+    `(` $dynamicSizes `)` (`` `[` $symbolOperands^ `]`)? attr-dict `:` type($memref)
+  }];
+
+  let hasVerifier = 1;
+  let hasCanonicalizer = 1;
+}
+
 def GPU_DeallocOp : GPU_Op<"dealloc", [GPU_AsyncOpInterface]> {
 
   let summary = "GPU memory deallocation operation";

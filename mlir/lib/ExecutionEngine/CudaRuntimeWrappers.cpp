@@ -141,6 +141,13 @@ extern "C" void *mgpuMemAlloc(uint64_t sizeBytes, CUstream /*stream*/) {
   return reinterpret_cast<void *>(ptr);
 }
 
+extern "C" void *mgpuMemAllocHost(uint64_t sizeBytes, CUstream /*stream*/) {
+  ScopedContext scopedContext;
+  void* ptr;
+  CUDA_REPORT_IF_ERROR(cuMemAllocHost(&ptr, sizeBytes));
+  return ptr;
+}
+
 extern "C" void mgpuMemFree(void *ptr, CUstream /*stream*/) {
   CUDA_REPORT_IF_ERROR(cuMemFree(reinterpret_cast<CUdeviceptr>(ptr)));
 }

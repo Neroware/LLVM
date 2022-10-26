@@ -1398,6 +1398,34 @@ void AllocOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<SimplifyDimOfAllocOp>(context);
 }
 
+//===----------------------------------------------------------------------===//
+// GPU_AllocHostOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AllocHostOp::verify() {
+  auto memRefType = memref().getType().cast<MemRefType>();
+
+  if (static_cast<int64_t>(dynamicSizes().size()) !=
+      memRefType.getNumDynamicDims())
+    return emitOpError("dimension operand count does not equal memref "
+                       "dynamic dimension count");
+
+  unsigned numSymbols = 0;
+  if (!memRefType.getLayout().isIdentity())
+    numSymbols = memRefType.getLayout().getAffineMap().getNumSymbols();
+  if (symbolOperands().size() != numSymbols) {
+    return emitOpError(
+        "symbol operand count does not equal memref symbol count");
+  }
+
+  return success();
+}
+
+void AllocHostOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                          MLIRContext *context) {
+  results.add<SimplifyDimOfAllocOp>(context);
+}
+
 #include "mlir/Dialect/GPU/IR/GPUOpInterfaces.cpp.inc"
 #include "mlir/Dialect/GPU/IR/GPUOpsEnums.cpp.inc"
 
